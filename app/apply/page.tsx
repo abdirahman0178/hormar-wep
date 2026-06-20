@@ -1,13 +1,18 @@
 'use client'
 import { useState } from 'react'
 import { UNIVERSITIES, PACKAGES } from '@/types'
+import { supabase } from '@/lib/supabase'
 
 export default function ApplyPage() {
   const [selected, setSelected] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [pkg, setPkg] = useState<'basic' | 'standard' | 'premium'>('standard')
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' })
+  const [passport, setPassport] = useState<File | null>(null)
+  const [certificates, setCertificates] = useState<File[]>([])
+  const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState('')
 
   const filtered = UNIVERSITIES.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -28,40 +33,74 @@ export default function ApplyPage() {
     }
   }
 
-  function handleSubmit() {
+  async function uploadFile(file: File, path: string): Promise<string> {
+    const { data, error } = await supabase.storage.from('documents').upload(path, file, { upsert: true })
+    if (error) throw error
+    const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(data.path)
+    return publicUrl
+  }
+
+  async function handleSubmit() {
     if (!form.firstName || !form.email || !form.phone) {
-      alert('Fadlan dhammaan meelaha buuxi')
+      setError('Fadlan dhammaan meelaha buuxi')
       return
     }
     if (selected.length === 0) {
-      alert('Fadlan jaamacad ugu yaraan hal dooro')
+      setError('Fadlan jaamacad ugu yaraan hal dooro')
       return
     }
-    setSubmitted(true)
+    if (!passport) {
+      setError('Fadlan passport-kaaga PDF ah soo dir')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const ts = Date.now()
+
+      const passportUrl = await uploadFile(passport, `passports/${ts}-${passport.name}`)
+
+      const certUrls: string[] = []
+      for (const cert of certificates) {
+        const url = await uploadFile(cert, `certificates/${ts}-${cert.name}`)
+        certUrls.push(url)
+      }
+
+      const { error: dbError } = await supabase.from('applications').insert({
+        first_name: form.firstName,
+        last_name: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        package: pkg,
+        universities: selected.map(id => UNIVERSITIES.find(u => u.id === id)?.name).filter(Boolean),
+        status: 'pending',
+        passport_url: passportUrl,
+        certificate_urls: certUrls,
+      })
+
+      if (dbError) throw dbError
+      setSubmitted(true)
+    } catch (err) {
+      console.error(err)
+      setError('Khalad ayaa dhacay. Dib u isku day.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (submitted) {
     return (
-      <div style={{
-        minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--teal-dark)', padding: 32,
-      }}>
-        <div style={{
-          background: '#fff', borderRadius: 16, padding: 48, maxWidth: 480,
-          textAlign: 'center',
-        }}>
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--teal-dark)', padding: 32 }}>
+        <div style={{ background: '#fff', borderRadius: 16, padding: 48, maxWidth: 480, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--teal-dark)', marginBottom: 12 }}>
-            Codsi la diray!
-          </h2>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--teal-dark)', marginBottom: 12 }}>Codsi la diray!</h2>
           <p style={{ fontSize: 15, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 8 }}>
             Mahadsanid <strong>{form.firstName}</strong>. Hormar team 24 saac gudahood kula xiriiri doontaa WhatsApp-kaaga.
           </p>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24 }}>
-            Jaamacadaha: {selected.map(id => UNIVERSITIES.find(u => u.id === id)?.name).join(' · ')}
-          </p>
           <button
-            onClick={() => { setSubmitted(false); setSelected([]); setForm({ firstName: '', lastName: '', email: '', phone: '' }) }}
+            onClick={() => { setSubmitted(false); setSelected([]); setForm({ firstName: '', lastName: '', email: '', phone: '' }); setPassport(null); setCertificates([]) }}
             className="btn-primary"
           >
             Codsi cusub bilow
@@ -76,21 +115,14 @@ export default function ApplyPage() {
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div className="section-label" style={{ color: '#9FE1CB' }}>Codsi</div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 8 }}>
-            Jaamacad dooro, form buuxi
-          </h1>
-          <p style={{ fontSize: 15, color: '#9FE1CB' }}>
-            Bidix jaamacadaha ka dooro — midig macluumaadkaaga geli
-          </p>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Jaamacad dooro, form buuxi</h1>
+          <p style={{ fontSize: 15, color: '#9FE1CB' }}>Bidix jaamacadaha ka dooro — midig macluumaadkaaga geli</p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
 
           {/* UNI LIST */}
-          <div style={{
-            background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 12, padding: 20,
-          }}>
+          <div style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: 20 }}>
             <p style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.6)', marginBottom: 14 }}>
               🏛 Jaamacadaha Turkey — dooro (max {maxUnis})
             </p>
@@ -99,32 +131,14 @@ export default function ApplyPage() {
               placeholder="Raadi jaamacad..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#fff',
-                outline: 'none', marginBottom: 12,
-              }}
+              style={{ width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#fff', outline: 'none', marginBottom: 12 }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 340, overflowY: 'auto' }}>
               {filtered.map(u => {
                 const isSel = selected.includes(u.id)
                 return (
-                  <div
-                    key={u.id}
-                    onClick={() => toggleUni(u.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-                      border: isSel ? '1px solid var(--teal)' : '1px solid transparent',
-                      background: isSel ? 'rgba(29,158,117,0.25)' : 'transparent',
-                    }}
-                  >
-                    <div style={{
-                      width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 12, fontWeight: 600,
-                      background: u.bg, color: u.color,
-                    }}>
+                  <div key={u.id} onClick={() => toggleUni(u.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, cursor: 'pointer', border: isSel ? '1px solid var(--teal)' : '1px solid transparent', background: isSel ? 'rgba(29,158,117,0.25)' : 'transparent' }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: u.bg, color: u.color }}>
                       {u.abbr}
                     </div>
                     <div style={{ flex: 1 }}>
@@ -142,54 +156,34 @@ export default function ApplyPage() {
           </div>
 
           {/* FORM */}
-          <div style={{
-            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: 12, padding: 24,
-          }}>
-            {/* Selected unis display */}
+          <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 12, padding: 24 }}>
+
+            {/* Selected unis */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>
-                Jaamacadaha la doortay
-              </div>
-              <div style={{
-                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 8, padding: '10px 12px', minHeight: 42, fontSize: 13,
-                color: selected.length === 0 ? 'rgba(255,255,255,0.4)' : '#fff',
-              }}>
-                {selected.length === 0
-                  ? 'Bidix jaamacad ka dooro...'
-                  : selected.map(id => {
-                    const u = UNIVERSITIES.find(u => u.id === id)
-                    return (
-                      <span key={id} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                        background: 'rgba(29,158,117,0.3)', border: '1px solid var(--teal)',
-                        borderRadius: 8, padding: '2px 8px', fontSize: 12, color: '#9FE1CB', margin: 2,
-                      }}>
-                        {u?.abbr} {u?.city}
-                      </span>
-                    )
-                  })
-                }
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>Jaamacadaha la doortay</div>
+              <div style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '10px 12px', minHeight: 42, fontSize: 13, color: selected.length === 0 ? 'rgba(255,255,255,0.4)' : '#fff' }}>
+                {selected.length === 0 ? 'Bidix jaamacad ka dooro...' : selected.map(id => {
+                  const u = UNIVERSITIES.find(u => u.id === id)
+                  return (
+                    <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(29,158,117,0.3)', border: '1px solid var(--teal)', borderRadius: 8, padding: '2px 8px', fontSize: 12, color: '#9FE1CB', margin: 2 }}>
+                      {u?.abbr} {u?.city}
+                    </span>
+                  )
+                })}
               </div>
             </div>
 
-            {/* Name row */}
+            {/* Name */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               {(['firstName', 'lastName'] as const).map(field => (
                 <div key={field} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>
-                    {field === 'firstName' ? 'Magaca hore' : 'Magaca dambe'}
-                  </label>
+                  <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>{field === 'firstName' ? 'Magaca hore' : 'Magaca dambe'}</label>
                   <input
                     type="text"
                     placeholder={field === 'firstName' ? 'Axmed' : 'Cabdi'}
                     value={form[field]}
                     onChange={e => setForm({ ...form, [field]: e.target.value })}
-                    style={{
-                      background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                      borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none',
-                    }}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none' }}
                   />
                 </div>
               ))}
@@ -198,55 +192,61 @@ export default function ApplyPage() {
             {/* Email */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
               <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Email</label>
-              <input
-                type="email" placeholder="axmed@email.com"
-                value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                style={{
-                  background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none',
-                }}
-              />
+              <input type="email" placeholder="axmed@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none' }} />
             </div>
 
             {/* Phone */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
               <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Telefoon (WhatsApp)</label>
-              <input
-                type="tel" placeholder="+252 61 xxx xxxx"
-                value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
-                style={{
-                  background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none',
-                }}
-              />
+              <input type="tel" placeholder="+252 61 xxx xxxx" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none' }} />
             </div>
 
             {/* Package */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
               <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Package dooro</label>
-              <select
-                value={pkg}
-                onChange={e => { setPkg(e.target.value as typeof pkg); setSelected([]) }}
-                style={{
-                  background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none', width: '100%',
-                }}
-              >
+              <select value={pkg} onChange={e => { setPkg(e.target.value as typeof pkg); setSelected([]) }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none', width: '100%' }}>
                 <option value="basic">Basic — $150 (1 jaamacad)</option>
                 <option value="standard">Standard — $280 (3 jaamacad)</option>
                 <option value="premium">Premium — $450 (5 jaamacad)</option>
               </select>
             </div>
 
+            {/* Passport upload */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Passport (PDF) *</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.1)', border: passport ? '1px solid var(--teal)' : '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer' }}>
+                <span style={{ fontSize: 16 }}>📄</span>
+                <span style={{ fontSize: 13, color: passport ? '#9FE1CB' : 'rgba(255,255,255,0.5)' }}>
+                  {passport ? passport.name : 'Passport PDF soo dooro...'}
+                </span>
+                <input type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={e => setPassport(e.target.files?.[0] ?? null)} />
+              </label>
+            </div>
+
+            {/* Certificates upload */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Shahaadooyinka (PDF) — optional</label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.1)', border: certificates.length > 0 ? '1px solid var(--teal)' : '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', cursor: 'pointer' }}>
+                <span style={{ fontSize: 16 }}>🎓</span>
+                <span style={{ fontSize: 13, color: certificates.length > 0 ? '#9FE1CB' : 'rgba(255,255,255,0.5)' }}>
+                  {certificates.length > 0 ? `${certificates.length} file la doortay` : 'Shahaadooyinka PDF soo dooro...'}
+                </span>
+                <input type="file" accept=".pdf,application/pdf" multiple style={{ display: 'none' }} onChange={e => setCertificates(Array.from(e.target.files ?? []))} />
+              </label>
+            </div>
+
+            {error && (
+              <div style={{ background: '#FCEBEB', color: '#791F1F', borderRadius: 8, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
+                {error}
+              </div>
+            )}
+
             <button
               onClick={handleSubmit}
-              style={{
-                width: '100%', background: '#fff', color: 'var(--teal-dark)',
-                border: 'none', padding: 12, borderRadius: 8, fontSize: 15,
-                fontWeight: 600, cursor: 'pointer',
-              }}
+              disabled={loading}
+              style={{ width: '100%', background: loading ? 'rgba(255,255,255,0.5)' : '#fff', color: 'var(--teal-dark)', border: 'none', padding: 12, borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer' }}
             >
-              Codsi Dir →
+              {loading ? 'Waa la diraya...' : 'Codsi Dir →'}
             </button>
           </div>
         </div>
