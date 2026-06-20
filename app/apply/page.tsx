@@ -1,9 +1,13 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { UNIVERSITIES, PACKAGES } from '@/types'
 import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 export default function ApplyPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
   const [selected, setSelected] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [pkg, setPkg] = useState<'basic' | 'standard' | 'premium'>('standard')
@@ -13,6 +17,42 @@ export default function ApplyPage() {
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user)
+      if (user) {
+        setForm(prev => ({
+          firstName: user.user_metadata?.given_name ?? prev.firstName,
+          lastName: user.user_metadata?.family_name ?? prev.lastName,
+          email: user.email ?? prev.email,
+          phone: prev.phone,
+        }))
+      }
+      setAuthLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      const u = session?.user ?? null
+      setUser(u)
+      if (u) {
+        setForm(prev => ({
+          firstName: u.user_metadata?.given_name ?? prev.firstName,
+          lastName: u.user_metadata?.family_name ?? prev.lastName,
+          email: u.email ?? prev.email,
+          phone: prev.phone,
+        }))
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function signIn() {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/apply` },
+    })
+  }
 
   const filtered = UNIVERSITIES.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -90,6 +130,38 @@ export default function ApplyPage() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'var(--text-muted)' }}>Waa la hubinayaa...</div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--teal-dark)', padding: 32 }}>
+        <div style={{ background: '#fff', borderRadius: 20, padding: 48, maxWidth: 420, width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🎓</div>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--teal-dark)', marginBottom: 10 }}>
+            Codsiga bilow
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 28 }}>
+            Google account-kaaga adeegsada si aad jaamacadaha Turkey u codsato.
+            Xogahaaga si ammaan ah ayaa loo keydsanayaa.
+          </p>
+          <button
+            onClick={signIn}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '14px 24px', borderRadius: 10, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 15, fontWeight: 500, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}
+          >
+            <GoogleIcon />
+            Google ku gal
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (submitted) {
     return (
       <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--teal-dark)', padding: 32 }}>
@@ -100,7 +172,7 @@ export default function ApplyPage() {
             Mahadsanid <strong>{form.firstName}</strong>. Hormar team 24 saac gudahood kula xiriiri doontaa WhatsApp-kaaga.
           </p>
           <button
-            onClick={() => { setSubmitted(false); setSelected([]); setForm({ firstName: '', lastName: '', email: '', phone: '' }); setPassport(null); setCertificates([]) }}
+            onClick={() => { setSubmitted(false); setSelected([]); setForm(prev => ({ ...prev, phone: '' })); setPassport(null); setCertificates([]) }}
             className="btn-primary"
           >
             Codsi cusub bilow
@@ -113,13 +185,26 @@ export default function ApplyPage() {
   return (
     <div style={{ background: 'var(--teal-dark)', padding: '56px 32px' }}>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
-          <div className="section-label" style={{ color: '#9FE1CB' }}>Codsi</div>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Jaamacad dooro, form buuxi</h1>
-          <p style={{ fontSize: 15, color: '#9FE1CB' }}>Bidix jaamacadaha ka dooro — midig macluumaadkaaga geli</p>
+
+        {/* User badge */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
+          <div style={{ textAlign: 'center', flex: 1 }}>
+            <div className="section-label" style={{ color: '#9FE1CB' }}>Codsi</div>
+            <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 4 }}>Jaamacad dooro, form buuxi</h1>
+            <p style={{ fontSize: 15, color: '#9FE1CB' }}>Bidix jaamacadaha ka dooro — midig macluumaadkaaga geli</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 12, padding: '8px 14px', flexShrink: 0 }}>
+            {user.user_metadata?.avatar_url && (
+              <img src={user.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+            )}
+            <span style={{ fontSize: 13, color: '#9FE1CB', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
+            <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Bax
+            </button>
+          </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
+        <div className="apply-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
 
           {/* UNI LIST */}
           <div style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: 20 }}>
@@ -189,10 +274,15 @@ export default function ApplyPage() {
               ))}
             </div>
 
-            {/* Email */}
+            {/* Email — pre-filled from Google, read-only */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Email</label>
-              <input type="email" placeholder="axmed@email.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: '#fff', outline: 'none' }} />
+              <label style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)' }}>Email (Google)</label>
+              <input
+                type="email"
+                value={form.email}
+                readOnly
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: 'rgba(255,255,255,0.7)', outline: 'none', cursor: 'default' }}
+              />
             </div>
 
             {/* Phone */}
@@ -252,5 +342,16 @@ export default function ApplyPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.5l6.8-6.8C35.8 2.5 30.3 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.9 6.2C12.4 13.1 17.7 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.9 24.5c0-1.7-.1-3.3-.4-4.9H24v9.3h12.9c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.3-4 6.8-9.9 6.8-17.4z"/>
+      <path fill="#FBBC05" d="M10.5 28.5c-.5-1.5-.8-3.1-.8-4.7s.3-3.2.8-4.7l-7.9-6.2C.9 16.2 0 19.9 0 24s.9 7.8 2.6 11.1l7.9-6.6z"/>
+      <path fill="#34A853" d="M24 48c6.2 0 11.5-2.1 15.3-5.7l-7.5-5.8c-2.1 1.4-4.7 2.2-7.8 2.2-6.3 0-11.6-4.2-13.5-9.9l-7.9 6.6C6.6 42.6 14.6 48 24 48z"/>
+    </svg>
   )
 }

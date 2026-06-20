@@ -83,3 +83,14 @@ body {
 .status-submitted { background: var(--teal-light); color: var(--teal-dark); }
 .status-accepted { background: #EAF3DE; color: #3B6D11; }
 .status-rejected { background: #FCEBEB; color: #791F1F; }
+
+.admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (max-width: 640px) {
+  .nav-links { display: none !important; }
+  .nav-admin-link { display: none !important; }
+
+  .apply-grid { grid-template-columns: 1fr !important; }
+
+  .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
