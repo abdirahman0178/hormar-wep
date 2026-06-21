@@ -206,12 +206,16 @@ export default function AdminPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700 }}>Admin Dashboard</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {user.user_metadata?.avatar_url && (
+          <a href="/admin/profile" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none', padding: '4px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
+            {user.user_metadata?.avatar_url ? (
               <img src={user.user_metadata.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+            ) : (
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: '#fff', fontWeight: 600 }}>
+                {user.email?.charAt(0).toUpperCase()}
+              </div>
             )}
-            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{user.email}</span>
-          </div>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{user.user_metadata?.full_name ?? user.email}</span>
+          </a>
           <button onClick={fetchApps} style={{ fontSize: 12, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', color: 'var(--teal)' }}>
             ↻ Cusboonaysii
           </button>
