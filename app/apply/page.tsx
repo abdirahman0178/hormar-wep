@@ -7,6 +7,11 @@ import type { User } from '@supabase/supabase-js'
 export default function ApplyPage() {
   const [user, setUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [emailInput, setEmailInput] = useState('')
+  const [passwordInput, setPasswordInput] = useState('')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup')
+  const [authError, setAuthError] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
 
   const [selected, setSelected] = useState<string[]>([])
   const [search, setSearch] = useState('')
@@ -47,11 +52,30 @@ export default function ApplyPage() {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function signIn() {
+  async function signInGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback?next=/apply` },
     })
+  }
+
+  async function signInEmail() {
+    if (!emailInput || !passwordInput) { setAuthError('Email iyo password geli'); return }
+    setAuthBusy(true)
+    setAuthError('')
+    try {
+      if (authMode === 'signup') {
+        const { error } = await supabase.auth.signUp({ email: emailInput, password: passwordInput })
+        if (error) throw error
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: emailInput, password: passwordInput })
+        if (error) throw error
+      }
+    } catch (err: any) {
+      setAuthError(err.message ?? 'Khalad ayaa dhacay')
+    } finally {
+      setAuthBusy(false)
+    }
   }
 
   const filtered = UNIVERSITIES.filter(u =>
@@ -141,21 +165,78 @@ export default function ApplyPage() {
   if (!user) {
     return (
       <div style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--teal-dark)', padding: 32 }}>
-        <div style={{ background: '#fff', borderRadius: 20, padding: 48, maxWidth: 420, width: '100%', textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🎓</div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--teal-dark)', marginBottom: 10 }}>
-            Codsiga bilow
-          </h2>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 28 }}>
-            Google account-kaaga adeegsada si aad jaamacadaha Turkey u codsato.
-            Xogahaaga si ammaan ah ayaa loo keydsanayaa.
-          </p>
+        <div style={{ background: '#fff', borderRadius: 20, padding: 40, maxWidth: 420, width: '100%' }}>
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>🎓</div>
+            <h2 style={{ fontSize: 21, fontWeight: 700, color: 'var(--teal-dark)', marginBottom: 6 }}>Codsiga bilow</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              Account samee ama gal si aad codsigaaga u dirsato
+            </p>
+          </div>
+
+          {/* Google */}
           <button
-            onClick={signIn}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '14px 24px', borderRadius: 10, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 15, fontWeight: 500, boxShadow: '0 2px 8px rgba(0,0,0,0.07)' }}
+            onClick={signInGoogle}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '13px 24px', borderRadius: 10, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 500, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 20 }}
           >
             <GoogleIcon />
             Google ku gal
+          </button>
+
+          {/* Divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>ama email ku gal</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', background: 'var(--gray-soft)', borderRadius: 8, padding: 3, marginBottom: 16 }}>
+            {(['signup', 'signin'] as const).map(m => (
+              <button key={m} onClick={() => { setAuthMode(m); setAuthError('') }} style={{ flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', fontSize: 13, cursor: 'pointer', fontWeight: authMode === m ? 600 : 400, background: authMode === m ? '#fff' : 'transparent', color: authMode === m ? 'var(--teal-dark)' : 'var(--text-muted)', boxShadow: authMode === m ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
+                {m === 'signup' ? 'Account Cusub' : 'Gal'}
+              </button>
+            ))}
+          </div>
+
+          {/* Email */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Email</label>
+            <input
+              type="email"
+              placeholder="axmed@gmail.com"
+              value={emailInput}
+              onChange={e => setEmailInput(e.target.value)}
+              style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 14, outline: 'none', width: '100%' }}
+            />
+          </div>
+
+          {/* Password */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={passwordInput}
+              onChange={e => setPasswordInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && signInEmail()}
+              style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 14, outline: 'none', width: '100%' }}
+            />
+          </div>
+
+          {authError && (
+            <div style={{ background: '#FCEBEB', color: '#791F1F', borderRadius: 8, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>
+              {authError}
+            </div>
+          )}
+
+          <button
+            onClick={signInEmail}
+            disabled={authBusy}
+            className="btn-primary"
+            style={{ width: '100%', justifyContent: 'center', opacity: authBusy ? 0.7 : 1 }}
+          >
+            {authBusy ? 'Sugaya...' : authMode === 'signup' ? 'Account Samee →' : 'Gal →'}
           </button>
         </div>
       </div>
